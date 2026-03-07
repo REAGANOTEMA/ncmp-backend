@@ -1,14 +1,14 @@
 {
   "name": "ncmp-backend",
   "version": "1.0.0",
-  "description": "National Constituency Management Platform Backend API",
+  "description": "National Constituency Management Platform Backend API - Uganda",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
     "build": "echo 'No build step required'",
-    "test": "echo \"No tests yet\""
+    "test": "echo 'No tests yet'"
   },
   "keywords": [
     "ncmp",
@@ -18,7 +18,9 @@
     "express",
     "postgresql",
     "api",
-    "backend"
+    "backend",
+    "rest",
+    "jwt"
   ],
   "author": "Reagan Otema",
   "license": "ISC",
@@ -44,5 +46,6 @@
   "bugs": {
     "url": "https://github.com/REAGANOTEMA/ncmp-backend/issues"
   },
-  "homepage": "https://github.com/REAGANOTEMA/ncmp-backend"
+  "homepage": "https://github.com/REAGANOTEMA/ncmp-backend",
+  "private": false
 }
