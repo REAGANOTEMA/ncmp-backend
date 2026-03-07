@@ -1,125 +1,82 @@
-const pool = require("../config/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-/*
-================================
-REGISTER
-================================
-*/
+const JWT_SECRET = process.env.JWT_SECRET || "YourSuperSecretJWTKey123!";
+
 exports.register = async (req, res) => {
+  const { full_name, password, role, nin, email } = req.body;
+  const pool = req.app.locals.pool;
+
   try {
-    const { full_name, email, nin, password, role } = req.body;
-
-    if (!full_name || !password || !role) {
-      return res.status(400).json({
-        message: "Full name, password and role are required",
-      });
+    // Validate
+    if (!full_name || !password || !role || (!nin && !email)) {
+      return res.status(400).json({ message: "Missing required fields" });
     }
 
-    if (!email && !nin) {
-      return res.status(400).json({
-        message: "Email or NIN is required",
-      });
-    }
+    const identifier = role === "citizen" ? nin : email;
 
-    // check existing user
-    const existingUser = await pool.query(
-      "SELECT * FROM users WHERE email=$1 OR nin=$2",
-      [email || null, nin || null]
+    // Check if user exists
+    const userCheck = await pool.query(
+      "SELECT * FROM users WHERE nin = $1 OR email = $2",
+      [nin || null, email || null]
     );
+    if (userCheck.rows.length > 0)
+      return res.status(400).json({ message: "User already exists" });
 
-    if (existingUser.rows.length > 0) {
-      return res.status(400).json({
-        message: "User already exists",
-      });
-    }
-
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const newUser = await pool.query(
-      `INSERT INTO users (full_name, email, nin, password, role)
-       VALUES ($1,$2,$3,$4,$5)
-       RETURNING id, full_name, email, nin, role`,
-      [full_name, email || null, nin || null, hashedPassword, role]
+    // Insert into DB
+    const result = await pool.query(
+      "INSERT INTO users (full_name, role, nin, email, password) VALUES ($1,$2,$3,$4,$5) RETURNING id, full_name, role, nin, email",
+      [full_name, role, nin || null, email || null, hashedPassword]
     );
 
-    res.status(201).json({
-      message: "Registration successful",
-      user: newUser.rows[0],
+    const user = result.rows[0];
+
+    // Generate JWT
+    const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, {
+      expiresIn: "7d",
     });
 
-  } catch (error) {
-    console.error("REGISTER ERROR:", error);
-    res.status(500).json({
-      message: "Registration failed",
-      error: error.message,
-    });
+    res.status(201).json({ user, token });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Registration failed", error: err.message });
   }
 };
 
-/*
-================================
-LOGIN
-================================
-*/
 exports.login = async (req, res) => {
+  const { identifier, password, role } = req.body;
+  const pool = req.app.locals.pool;
+
   try {
-    const { email, nin, password } = req.body;
+    if (!identifier || !password || !role)
+      return res.status(400).json({ message: "Missing required fields" });
 
-    if ((!email && !nin) || !password) {
-      return res.status(400).json({
-        message: "Email/NIN and password required",
-      });
-    }
-
-    const userQuery = await pool.query(
-      "SELECT * FROM users WHERE email=$1 OR nin=$2",
-      [email || null, nin || null]
+    // Find user
+    const userResult = await pool.query(
+      role === "citizen"
+        ? "SELECT * FROM users WHERE nin = $1"
+        : "SELECT * FROM users WHERE email = $1",
+      [identifier]
     );
 
-    if (userQuery.rows.length === 0) {
-      return res.status(400).json({
-        message: "User not found",
-      });
-    }
+    const user = userResult.rows[0];
+    if (!user) return res.status(400).json({ message: "User not found" });
 
-    const user = userQuery.rows[0];
+    // Check password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
 
-    const validPassword = await bcrypt.compare(password, user.password);
-
-    if (!validPassword) {
-      return res.status(401).json({
-        message: "Invalid credentials",
-      });
-    }
-
-    const token = jwt.sign(
-      {
-        id: user.id,
-        role: user.role,
-      },
-      process.env.JWT_SECRET || "secret123",
-      { expiresIn: "1d" }
-    );
-
-    res.json({
-      message: "Login successful",
-      token,
-      user: {
-        id: user.id,
-        full_name: user.full_name,
-        email: user.email,
-        nin: user.nin,
-        role: user.role,
-      },
+    // Generate JWT
+    const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, {
+      expiresIn: "7d",
     });
 
-  } catch (error) {
-    console.error("LOGIN ERROR:", error);
-    res.status(500).json({
-      message: "Login failed",
-      error: error.message,
-    });
+    res.status(200).json({ user, token });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Login failed", error: err.message });
   }
 };

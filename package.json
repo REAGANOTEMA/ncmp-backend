@@ -17,7 +17,8 @@
     "nodejs",
     "express",
     "postgresql",
-    "api"
+    "api",
+    "backend"
   ],
   "author": "Reagan Otema",
   "license": "ISC",
