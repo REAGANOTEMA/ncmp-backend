@@ -4,41 +4,35 @@ const cors = require("cors");
 const morgan = require("morgan");
 const { Pool } = require("pg");
 
-const app = express();
-
 // ===============================
 // Environment Variables
 // ===============================
 const PORT = process.env.PORT || 5000;
 const FRONTEND_URL = process.env.FRONTEND_URL || "*";
-const DB_USER = process.env.DB_USER;
-const DB_HOST = process.env.DB_HOST;
-const DB_NAME = process.env.DB_NAME;
-const DB_PASS = process.env.DB_PASS;
-const DB_PORT = process.env.DB_PORT;
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // ===============================
-// PostgreSQL Pool
+// PostgreSQL Pool Setup (SSL enabled)
 // ===============================
 const pool = new Pool({
-  user: DB_USER,
-  host: DB_HOST,
-  database: DB_NAME,
-  password: DB_PASS,
-  port: DB_PORT,
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASS,
+  port: process.env.DB_PORT,
+  ssl: { rejectUnauthorized: false }, // required for Render Postgres
 });
 
-// Test DB connection
 pool.connect()
   .then(() => console.log("✅ PostgreSQL Connected"))
   .catch((err) => console.error("❌ DB Connection Error:", err));
 
-// Make pool accessible in routes
-app.locals.pool = pool;
+// ===============================
+// Express App Setup
+// ===============================
+const app = express();
 
-// ===============================
 // Middleware
-// ===============================
 app.use(
   cors({
     origin: FRONTEND_URL,
@@ -46,17 +40,25 @@ app.use(
   })
 );
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 
 // ===============================
-// Routes
+// Import Routes (Safe loading)
 // ===============================
-const authRoutes = require("./routes/authRoutes");
-app.use("/api/auth", authRoutes);
+let authRoutes, mpRoutes, staffRoutes, requestRoutes, projectRoutes, beneficiaryRoutes, reportRoutes;
 
-// Add other routes as needed:
-// const mpRoutes = require("./routes/mpRoutes");
-// app.use("/api/mps", mpRoutes);
+try {
+  authRoutes = require("./routes/authRoutes");
+  mpRoutes = require("./routes/mpRoutes");
+  staffRoutes = require("./routes/staffRoutes");
+  requestRoutes = require("./routes/requestRoutes");
+  projectRoutes = require("./routes/projectRoutes");
+  beneficiaryRoutes = require("./routes/beneficiaryRoutes");
+  reportRoutes = require("./routes/reportRoutes");
+} catch (err) {
+  console.warn("⚠️ Some route files are missing. API will still run.");
+}
 
 // ===============================
 // Health Check
@@ -68,6 +70,17 @@ app.get("/", (req, res) => {
     environment: process.env.NODE_ENV || "development",
   });
 });
+
+// ===============================
+// API Routes
+// ===============================
+if (authRoutes) app.use("/api/auth", authRoutes);
+if (mpRoutes) app.use("/api/mps", mpRoutes);
+if (staffRoutes) app.use("/api/staff", staffRoutes);
+if (requestRoutes) app.use("/api/requests", requestRoutes);
+if (projectRoutes) app.use("/api/projects", projectRoutes);
+if (beneficiaryRoutes) app.use("/api/beneficiaries", beneficiaryRoutes);
+if (reportRoutes) app.use("/api/reports", reportRoutes);
 
 // ===============================
 // 404 Handler
@@ -88,5 +101,7 @@ app.use((err, req, res, next) => {
 // Start Server
 // ===============================
 app.listen(PORT, () => {
-  console.log(`🚀 NCMP Server running on port ${PORT}`);
+  console.log(
+    `🚀 NCMP Server running on port ${PORT} | ENV: ${process.env.NODE_ENV || "development"}`
+  );
 });
