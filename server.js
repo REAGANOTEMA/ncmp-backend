@@ -1,4 +1,5 @@
 require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
@@ -9,10 +10,9 @@ const { Pool } = require("pg");
 // ===============================
 const PORT = process.env.PORT || 5000;
 const FRONTEND_URL = process.env.FRONTEND_URL || "*";
-const JWT_SECRET = process.env.JWT_SECRET;
 
 // ===============================
-// PostgreSQL Pool Setup (SSL enabled)
+// PostgreSQL Connection
 // ===============================
 const pool = new Pool({
   user: process.env.DB_USER,
@@ -20,88 +20,76 @@ const pool = new Pool({
   database: process.env.DB_NAME,
   password: process.env.DB_PASS,
   port: process.env.DB_PORT,
-  ssl: { rejectUnauthorized: false }, // required for Render Postgres
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
+// Test DB connection
 pool.connect()
   .then(() => console.log("✅ PostgreSQL Connected"))
-  .catch((err) => console.error("❌ DB Connection Error:", err));
+  .catch(err => console.error("❌ PostgreSQL Error:", err));
 
 // ===============================
-// Express App Setup
+// Express App
 // ===============================
 const app = express();
 
+// make pool available everywhere
+app.locals.pool = pool;
+
+// ===============================
 // Middleware
-app.use(
-  cors({
-    origin: FRONTEND_URL,
-    credentials: true,
-  })
-);
+// ===============================
+app.use(cors({
+  origin: FRONTEND_URL,
+  credentials: true
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 
 // ===============================
-// Import Routes (Safe loading)
+// Routes
 // ===============================
-let authRoutes, mpRoutes, staffRoutes, requestRoutes, projectRoutes, beneficiaryRoutes, reportRoutes;
+const authRoutes = require("./routes/authRoutes");
 
-try {
-  authRoutes = require("./routes/authRoutes");
-  mpRoutes = require("./routes/mpRoutes");
-  staffRoutes = require("./routes/staffRoutes");
-  requestRoutes = require("./routes/requestRoutes");
-  projectRoutes = require("./routes/projectRoutes");
-  beneficiaryRoutes = require("./routes/beneficiaryRoutes");
-  reportRoutes = require("./routes/reportRoutes");
-} catch (err) {
-  console.warn("⚠️ Some route files are missing. API will still run.");
-}
+app.use("/api/auth", authRoutes);
 
 // ===============================
 // Health Check
 // ===============================
 app.get("/", (req, res) => {
-  res.status(200).json({
+  res.json({
     message: "NCMP Backend API Running 🚀",
     status: "OK",
-    environment: process.env.NODE_ENV || "development",
+    environment: process.env.NODE_ENV || "development"
   });
 });
 
 // ===============================
-// API Routes
-// ===============================
-if (authRoutes) app.use("/api/auth", authRoutes);
-if (mpRoutes) app.use("/api/mps", mpRoutes);
-if (staffRoutes) app.use("/api/staff", staffRoutes);
-if (requestRoutes) app.use("/api/requests", requestRoutes);
-if (projectRoutes) app.use("/api/projects", projectRoutes);
-if (beneficiaryRoutes) app.use("/api/beneficiaries", beneficiaryRoutes);
-if (reportRoutes) app.use("/api/reports", reportRoutes);
-
-// ===============================
-// 404 Handler
+// 404
 // ===============================
 app.use((req, res) => {
-  res.status(404).json({ error: "Route not found ❌" });
+  res.status(404).json({
+    error: "Route not found"
+  });
 });
 
 // ===============================
 // Global Error Handler
 // ===============================
 app.use((err, req, res, next) => {
-  console.error("❌ Server Error:", err);
-  res.status(500).json({ error: "Internal Server Error", message: err.message });
+  console.error(err);
+
+  res.status(500).json({
+    message: "Internal Server Error",
+    error: err.message
+  });
 });
 
 // ===============================
-// Start Server
-// ===============================
 app.listen(PORT, () => {
-  console.log(
-    `🚀 NCMP Server running on port ${PORT} | ENV: ${process.env.NODE_ENV || "development"}`
-  );
+  console.log(`🚀 NCMP Server running on port ${PORT}`);
 });
